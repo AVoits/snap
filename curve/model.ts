@@ -1,6 +1,6 @@
 import {Coordinate} from "../tracks/tracks.model";
 import {CONTROL_DISTANCE} from "../tracks/tracks.const";
-import { v4 as uuidv4 } from 'uuid';
+import {v4 as uuidv4} from 'uuid';
 
 
 export enum PointType {
@@ -50,6 +50,7 @@ export class Arc {
     controlEnd: Point
 
     arcID: number
+    arcColor: string
 
     constructor(params: ArcParams) {
         const {start, end, arcID} = params
@@ -95,8 +96,13 @@ export class Curve {
     }
 
     public moveAnchor(point: Point, dx: number, dy: number, x: number, y: number, event: MouseEvent) {
-        const currentArc = this.arcs[point.arcID]
-        const prevArc = this.arcs[point.arcID - 1]
+        // @ts-ignore
+        const indexArc = this.arcs.findIndex((item) => {
+            return item.arcID === point.arcID
+        })
+
+        const currentArc = this.arcs[indexArc]
+        const prevArc = this.arcs[indexArc - 1]
 
         if (point.type === PointType.anchorEnd) {
             currentArc.anchorEnd.x = x
@@ -115,7 +121,8 @@ export class Curve {
     }
 
     public moveControl(point: Point, dx: number, dy: number, x: number, y: number, event: MouseEvent) {
-        const currentArc = this.arcs[point.arcID]
+        // @ts-ignore
+        const currentArc = this.arcs.find((arc) => arc.arcID === point.arcID)
 
         if (point.type === PointType.controlStart) {
             currentArc.controlStart.x = x
@@ -130,22 +137,29 @@ export class Curve {
 
 
     private splitArc(arc: Arc, x: number, y: number): Arc[] {
+        const uuidFirst = uuidv4()
+        const uuidSecond = uuidv4()
 
-        const newPoint = new Point({
-            arcID: 0,
+        const firstPoint = new Point({
+            arcID: uuidFirst,
+            type: PointType.anchorEnd,
+            coordinate: {x, y}
+        })
+        const secondPoint = new Point({
+            arcID: uuidSecond,
             type: PointType.anchorEnd,
             coordinate: {x, y}
         })
 
         const firstArc = new Arc({
-            arcID: 0,
+            arcID: uuidFirst,
             start: arc.anchorStart,
-            end: newPoint
+            end: firstPoint
             })
 
         const secondArc = new Arc({
-            arcID: 0,
-            start: newPoint,
+            arcID: uuidSecond,
+            start: secondPoint,
             end: arc.anchorEnd
         })
 
@@ -153,26 +167,53 @@ export class Curve {
     }
 
     public addAnchor(arc: Arc, x: number, y: number) {
+        // @ts-ignore
         const currentArcIndex = this.arcs.findIndex((item) => arc.arcID === item.arcID)
         const newArcs = this.splitArc(arc, x, y)
 
         if(currentArcIndex !== -1){
             this.arcs.splice(currentArcIndex, 1, ...newArcs)
         }
-
-        for (let i = 0; i < this.arcs.length - 1; i++) {
-
-            const item = this.arcs[i]
-
-            item.arcID = i
-            item.anchorEnd.arcID = i
-            item.anchorStart.arcID = i
-            item.controlStart.arcID = i
-            item.controlEnd.arcID = i
-        }
     }
 
-    public deleteAnchor() {}
+    private joinArcs(start: Arc, end: Arc): Arc {
+        return new Arc({
+            arcID: uuidv4(),
+            start: start.anchorStart,
+            end: end.anchorEnd
+        })
+    }
 
-    public changeArcColor() {}
+    public deleteAnchor(point: Point) {
+        // @ts-ignore
+        const indexArc = this.arcs.findIndex((item) => {
+            return item.arcID === point.arcID
+        })
+
+        if(this.arcs.length === 1){
+            return
+        }
+
+        if(point.type === PointType.anchorEnd){
+            this.arcs.splice(-1, 1)
+
+            return;
+        }
+
+        const currentArc = this.arcs[indexArc]
+        const prevArc = this.arcs[indexArc - 1]
+
+        if(!prevArc){
+            this.arcs.splice(0, 1)
+            return;
+        }
+
+        const newArc = this.joinArcs(prevArc, currentArc)
+
+        this.arcs.splice(indexArc - 1, 2, newArc)
+    }
+
+    public changeArcColor(arc: Arc, color: string) {
+        arc.arcColor = color
+    }
 }
