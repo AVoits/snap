@@ -1,13 +1,13 @@
 import {Arc, Curve, Point, PointType} from "./model";
 import {CurveView} from "./view";
-import {Coordinate} from "../tracks/tracks.model";
 import {MaterialColors} from "./colorsMaterial";
+import {Coordinate, CurveData} from "./curve.model";
 
 export class Controller {
     model: Curve
     view: CurveView
 
-    constructor(example: Coordinate[]) {
+    constructor(example: CurveData[]) {
         this.model = new Curve(example)
 
 
