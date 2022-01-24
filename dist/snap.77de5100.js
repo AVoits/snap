@@ -1010,6 +1010,11 @@ var Point = function () {
     this.y = this.y + dy;
   };
 
+  Point.prototype.updatePoint = function (coordinate) {
+    this.x = coordinate.x;
+    this.y = coordinate.y;
+  };
+
   return Point;
 }();
 
@@ -1017,31 +1022,60 @@ exports.Point = Point;
 
 var Arc = function () {
   function Arc(params) {
-    var start = params.start,
-        end = params.end,
+    this.createByCurveData(params);
+  }
+
+  Arc.prototype.updatePoint = function (coordinate, type) {
+    switch (type) {
+      case PointType.anchorStart:
+        this.anchorStart.updatePoint(coordinate);
+        break;
+
+      case PointType.anchorEnd:
+        this.anchorEnd.updatePoint(coordinate);
+        break;
+
+      case PointType.controlStart:
+        this.controlStart.updatePoint(coordinate);
+        break;
+
+      case PointType.controlEnd:
+        this.controlEnd.updatePoint(coordinate);
+        break;
+
+      default:
+        var expectedType = type;
+        throw new Error("\u0427\u0442\u043E-\u0442\u043E \u043F\u043E\u0448\u043B\u043E \u043D\u0435 \u0442\u0430\u043A. \u041D\u0435\u0438\u0437\u0432\u0435\u0441\u0442\u043D\u044B\u0439 \u0442\u0438\u043F: " + expectedType);
+    }
+  };
+
+  Arc.prototype.createByCurveData = function (params) {
+    var data = params.data,
         arcID = params.arcID;
     this.arcID = arcID;
     this.anchorStart = new Point({
-      coordinate: start,
+      coordinate: data.start,
       type: PointType.anchorStart,
       arcID: arcID
     });
     this.anchorEnd = new Point({
-      coordinate: end,
+      coordinate: data.end,
       type: PointType.anchorEnd,
       arcID: arcID
     });
+    var startControlCoordinate = data.cStart ? data.cStart : this.makeControlStart(data.start);
     this.controlStart = new Point({
-      coordinate: this.makeControlStart(start),
+      coordinate: startControlCoordinate,
       type: PointType.controlStart,
       arcID: arcID
     });
+    var endControlCoordinate = data.cEnd ? data.cEnd : this.makeControlEnd(data.end);
     this.controlEnd = new Point({
-      coordinate: this.makeControlEnd(end),
+      coordinate: endControlCoordinate,
       type: PointType.controlEnd,
       arcID: arcID
     });
-  }
+  };
 
   Arc.prototype.makeControlStart = function (point) {
     var newCoordinate = {
@@ -1067,20 +1101,15 @@ exports.Arc = Arc;
 var Curve = function () {
   function Curve(data) {
     this.arcs = [];
-
-    for (var i = 0; i < data.length - 1; i++) {
-      var start = data[i];
-      var end = data[i + 1];
-      var arc = new Arc({
-        start: start,
-        end: end,
+    this.arcs = data.map(function (item) {
+      return new Arc({
+        data: item,
         arcID: uuid_1.v4()
       });
-      this.arcs.push(arc);
-    }
+    });
   }
 
-  Curve.prototype.moveAnchor = function (point, dx, dy, x, y, event) {
+  Curve.prototype.moveAnchor = function (point, dx, dy, x, y) {
     // @ts-ignore
     var indexArc = this.arcs.findIndex(function (item) {
       return item.arcID === point.arcID;
@@ -1089,34 +1118,44 @@ var Curve = function () {
     var prevArc = this.arcs[indexArc - 1];
 
     if (point.type === PointType.anchorEnd) {
-      currentArc.anchorEnd.x = x;
-      currentArc.anchorEnd.y = y;
+      currentArc.updatePoint({
+        x: x,
+        y: y
+      }, PointType.anchorEnd);
       return;
     }
 
     if (prevArc) {
-      prevArc.anchorEnd.x = x;
-      prevArc.anchorEnd.y = y;
+      prevArc.updatePoint({
+        x: x,
+        y: y
+      }, PointType.anchorEnd);
     }
 
-    currentArc.anchorStart.x = x;
-    currentArc.anchorStart.y = y;
+    currentArc.updatePoint({
+      x: x,
+      y: y
+    }, PointType.anchorStart);
   };
 
-  Curve.prototype.moveControl = function (point, dx, dy, x, y, event) {
+  Curve.prototype.moveControl = function (point, dx, dy, x, y) {
     // @ts-ignore
     var currentArc = this.arcs.find(function (arc) {
       return arc.arcID === point.arcID;
     });
 
     if (point.type === PointType.controlStart) {
-      currentArc.controlStart.x = x;
-      currentArc.controlStart.y = y;
+      currentArc.updatePoint({
+        x: x,
+        y: y
+      }, PointType.controlStart);
     }
 
     if (point.type === PointType.controlEnd) {
-      currentArc.controlEnd.x = x;
-      currentArc.controlEnd.y = y;
+      currentArc.updatePoint({
+        x: x,
+        y: y
+      }, PointType.controlEnd);
     }
   };
 
@@ -1141,13 +1180,17 @@ var Curve = function () {
     });
     var firstArc = new Arc({
       arcID: uuidFirst,
-      start: arc.anchorStart,
-      end: firstPoint
+      data: {
+        start: arc.anchorStart,
+        end: firstPoint
+      }
     });
     var secondArc = new Arc({
       arcID: uuidSecond,
-      start: secondPoint,
-      end: arc.anchorEnd
+      data: {
+        start: secondPoint,
+        end: arc.anchorEnd
+      }
     });
     return [firstArc, secondArc];
   };
@@ -1169,8 +1212,10 @@ var Curve = function () {
   Curve.prototype.joinArcs = function (start, end) {
     return new Arc({
       arcID: uuid_1.v4(),
-      start: start.anchorStart,
-      end: end.anchorEnd
+      data: {
+        start: start.anchorStart,
+        end: end.anchorEnd
+      }
     });
   };
 
@@ -10557,6 +10602,23 @@ var CurveView = function () {
     this.drawHelpInfo();
   };
 
+  CurveView.prototype.drawHelpInfo = function () {
+    this.field.rect(10, 10, 350, 85, 8, 8).attr({
+      stroke: colorsMaterial_1.MaterialColors.Teal["500"],
+      strokeWidth: 1,
+      fill: colorsMaterial_1.MaterialColors.Teal["100"]
+    });
+    this.field.text(20, 30, 'Клик по кривой - перекрасить').attr({
+      fill: colorsMaterial_1.MaterialColors.Teal["900"]
+    });
+    this.field.text(20, 60, 'Двойной клик по кривой - добавить якорь').attr({
+      fill: colorsMaterial_1.MaterialColors.Teal["900"]
+    });
+    this.field.text(20, 80, 'Двойной клик по якорю - удалить якорь').attr({
+      fill: colorsMaterial_1.MaterialColors.Teal["900"]
+    });
+  };
+
   CurveView.prototype.drawControls = function (arc) {
     var _this = this;
 
@@ -10572,8 +10634,8 @@ var CurveView = function () {
     });
     this.field.circle(arc.controlEnd.x, arc.controlEnd.y, 5).attr({
       fill: this.controlEndColor
-    }).drag(function (dx, dy, x, y, event) {
-      return _this.handlers.onPointMove(arc.controlEnd, dx, dy, x, y, event);
+    }).drag(function (dx, dy, x, y) {
+      return _this.handlers.onPointMove(arc.controlEnd, dx, dy, x, y);
     }, this.onStart, this.onStop);
     this.field.line(arc.controlEnd.x, arc.controlEnd.y, arc.anchorEnd.x, arc.anchorEnd.y).attr({
       stroke: this.controlEndColor,
@@ -10605,8 +10667,8 @@ var CurveView = function () {
       fill: 'pink'
     }).dblclick(function (e) {
       _this.handlers.onDeleteAnchor(point, e);
-    }).drag(function (dx, dy, x, y, event) {
-      return _this.handlers.onPointMove(point, dx, dy, x, y, event);
+    }).drag(function (dx, dy, x, y) {
+      return _this.handlers.onPointMove(point, dx, dy, x, y);
     }, this.onStart, this.onStop);
   };
 
@@ -10621,23 +10683,6 @@ var CurveView = function () {
     var anchorEnd = arc.anchorEnd.x + "," + arc.anchorEnd.y;
     var C = "C" + controlStart + " " + controlEnd + " " + anchorEnd;
     return M + " " + C;
-  };
-
-  CurveView.prototype.drawHelpInfo = function () {
-    this.field.rect(10, 10, 350, 85, 8, 8).attr({
-      stroke: colorsMaterial_1.MaterialColors.Teal["500"],
-      strokeWidth: 1,
-      fill: colorsMaterial_1.MaterialColors.Teal["100"]
-    });
-    this.field.text(20, 30, 'Клик по кривой - перекрасить').attr({
-      fill: colorsMaterial_1.MaterialColors.Teal["900"]
-    });
-    this.field.text(20, 60, 'Двойной клик по кривой - добавить якорь').attr({
-      fill: colorsMaterial_1.MaterialColors.Teal["900"]
-    });
-    this.field.text(20, 80, 'Двойной клик по якорю - удалить якорь').attr({
-      fill: colorsMaterial_1.MaterialColors.Teal["900"]
-    });
   };
 
   return CurveView;
@@ -10659,8 +10704,8 @@ var view_1 = require("./view");
 var colorsMaterial_1 = require("./colorsMaterial");
 
 var Controller = function () {
-  function Controller(example) {
-    this.model = new model_1.Curve(example);
+  function Controller(curveData) {
+    this.model = new model_1.Curve(curveData);
     this.view = new view_1.CurveView(this.model, {
       onPointMove: this.pointMoveHandler.bind(this),
       onAddAnchor: this.anchorAddHandler.bind(this),
@@ -10673,13 +10718,11 @@ var Controller = function () {
     this.view.render();
   };
 
-  Controller.prototype.pointMoveHandler = function (point, dx, dy, x, y, event) {
+  Controller.prototype.pointMoveHandler = function (point, dx, dy, x, y) {
     if (point.type === model_1.PointType.anchorStart || point.type === model_1.PointType.anchorEnd) {
-      this.model.moveAnchor(point, dx, dy, x, y, event);
-    }
-
-    if (point.type === model_1.PointType.controlStart || point.type === model_1.PointType.controlEnd) {
-      this.model.moveControl(point, dx, dy, x, y, event);
+      this.model.moveAnchor(point, dx, dy, x, y);
+    } else if (point.type === model_1.PointType.controlStart || point.type === model_1.PointType.controlEnd) {
+      this.model.moveControl(point, dx, dy, x, y);
     }
 
     this.view.render();
@@ -10716,6 +10759,8 @@ Object.defineProperty(exports, "__esModule", {
 
 var controller_1 = require("./curve/controller");
 
+var Snap = require("snapsvg");
+
 var example = [{
   x: 100,
   y: 350
@@ -10731,10 +10776,267 @@ var example = [{
 }, {
   x: 800,
   y: 350
+}]; // @ts-ignore
+
+var test = Array.from(document.querySelectorAll('path')).map(function (i) {
+  return i.getAttribute('d');
+});
+
+var mapPathToCurveData = function mapPathToCurveData(arr) {
+  return arr.map(function (item) {
+    var data = Snap.parsePathString(item); // ['M', 94, 383]
+    // ['C', 116, 274, 229, 256, 173, 189]
+
+    var M = data[0],
+        C = data[1];
+    var curvedata = {
+      start: {
+        x: M[1],
+        y: M[2]
+      },
+      end: {
+        x: C[5],
+        y: C[6]
+      },
+      cStart: {
+        x: C[1],
+        y: C[2]
+      },
+      cEnd: {
+        x: C[3],
+        y: C[4]
+      }
+    };
+    return curvedata;
+  });
+};
+
+var initData__ = mapPathToCurveData(test);
+var initData = [{
+  "start": {
+    "x": 94,
+    "y": 383
+  },
+  "end": {
+    "x": 173,
+    "y": 189
+  },
+  "cStart": {
+    "x": 116,
+    "y": 274
+  },
+  "cEnd": {
+    "x": 229,
+    "y": 256
+  }
+}, {
+  "start": {
+    "x": 173,
+    "y": 189
+  },
+  "end": {
+    "x": 145,
+    "y": 456
+  },
+  "cStart": {
+    "x": 95,
+    "y": 128
+  },
+  "cEnd": {
+    "x": 215,
+    "y": 344
+  }
+}, {
+  "start": {
+    "x": 145,
+    "y": 456
+  },
+  "end": {
+    "x": 232,
+    "y": 467
+  },
+  "cStart": {
+    "x": 184,
+    "y": 162
+  },
+  "cEnd": {
+    "x": 259,
+    "y": 388
+  }
+}, {
+  "start": {
+    "x": 232,
+    "y": 467
+  },
+  "end": {
+    "x": 321,
+    "y": 318
+  },
+  "cStart": {
+    "x": 285,
+    "y": 389
+  },
+  "cEnd": {
+    "x": 388,
+    "y": 351
+  }
+}, {
+  "start": {
+    "x": 321,
+    "y": 318
+  },
+  "end": {
+    "x": 351,
+    "y": 430
+  },
+  "cStart": {
+    "x": 253,
+    "y": 286
+  },
+  "cEnd": {
+    "x": 264,
+    "y": 538
+  }
+}, {
+  "start": {
+    "x": 351,
+    "y": 430
+  },
+  "end": {
+    "x": 409,
+    "y": 188
+  },
+  "cStart": {
+    "x": 407,
+    "y": 350
+  },
+  "cEnd": {
+    "x": 482,
+    "y": 174
+  }
+}, {
+  "start": {
+    "x": 409,
+    "y": 188
+  },
+  "end": {
+    "x": 416,
+    "y": 450
+  },
+  "cStart": {
+    "x": 363,
+    "y": 197
+  },
+  "cEnd": {
+    "x": 362,
+    "y": 392
+  }
+}, {
+  "start": {
+    "x": 416,
+    "y": 450
+  },
+  "end": {
+    "x": 503,
+    "y": 189
+  },
+  "cStart": {
+    "x": 448,
+    "y": 493
+  },
+  "cEnd": {
+    "x": 557,
+    "y": 240
+  }
+}, {
+  "start": {
+    "x": 503,
+    "y": 189
+  },
+  "end": {
+    "x": 491,
+    "y": 448
+  },
+  "cStart": {
+    "x": 440,
+    "y": 192
+  },
+  "cEnd": {
+    "x": 454,
+    "y": 377
+  }
+}, {
+  "start": {
+    "x": 491,
+    "y": 448
+  },
+  "end": {
+    "x": 552,
+    "y": 388
+  },
+  "cStart": {
+    "x": 503,
+    "y": 459
+  },
+  "cEnd": {
+    "x": 544,
+    "y": 494
+  }
+}, {
+  "start": {
+    "x": 552,
+    "y": 388
+  },
+  "end": {
+    "x": 621,
+    "y": 413
+  },
+  "cStart": {
+    "x": 569,
+    "y": 511
+  },
+  "cEnd": {
+    "x": 614,
+    "y": 464
+  }
+}, {
+  "start": {
+    "x": 621,
+    "y": 413
+  },
+  "end": {
+    "x": 552,
+    "y": 388
+  },
+  "cStart": {
+    "x": 639,
+    "y": 293
+  },
+  "cEnd": {
+    "x": 547,
+    "y": 287
+  }
+}, {
+  "start": {
+    "x": 552,
+    "y": 388
+  },
+  "end": {
+    "x": 721,
+    "y": 312
+  },
+  "cStart": {
+    "x": 600,
+    "y": 340
+  },
+  "cEnd": {
+    "x": 726,
+    "y": 413
+  }
 }];
-var controller = new controller_1.Controller(example);
+var controller = new controller_1.Controller(initData);
 controller.draw();
-},{"./curve/controller":"curve/controller.ts"}],"../../AppData/Roaming/nvm/v14.17.6/node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
+},{"./curve/controller":"curve/controller.ts","snapsvg":"node_modules/snapsvg/dist/snap.svg.js"}],"../../AppData/Roaming/nvm/v14.17.6/node_modules/parcel-bundler/src/builtins/hmr-runtime.js":[function(require,module,exports) {
 var global = arguments[3];
 var OVERLAY_ID = '__parcel__error__overlay__';
 var OldModule = module.bundle.Module;
@@ -10762,7 +11064,7 @@ var parent = module.bundle.parent;
 if ((!parent || !parent.isParcelRequire) && typeof WebSocket !== 'undefined') {
   var hostname = "" || location.hostname;
   var protocol = location.protocol === 'https:' ? 'wss' : 'ws';
-  var ws = new WebSocket(protocol + '://' + hostname + ':' + "58566" + '/');
+  var ws = new WebSocket(protocol + '://' + hostname + ':' + "62318" + '/');
 
   ws.onmessage = function (event) {
     checkedAssets = {};

@@ -1,15 +1,14 @@
 import {Arc, Curve, Point, PointType} from "./model";
 import {CurveView} from "./view";
 import {MaterialColors} from "./colorsMaterial";
-import {Coordinate, CurveData} from "./curve.model";
+import {CurveData} from "./curve.model";
 
 export class Controller {
     model: Curve
     view: CurveView
 
-    constructor(example: CurveData[]) {
-        this.model = new Curve(example)
-
+    constructor(curveData: CurveData[]) {
+        this.model = new Curve(curveData)
 
         this.view = new CurveView(
             this.model,
@@ -26,13 +25,13 @@ export class Controller {
         this.view.render()
     }
 
-    pointMoveHandler(point: Point, dx: number, dy: number, x: number, y: number, event: MouseEvent) {
+    pointMoveHandler(point: Point, dx: number, dy: number, x: number, y: number) {
         if (point.type === PointType.anchorStart || point.type === PointType.anchorEnd) {
-            this.model.moveAnchor(point, dx, dy, x, y, event)
-        }
+            this.model.moveAnchor(point, dx, dy, x, y)
+        } else
 
         if (point.type === PointType.controlStart || point.type === PointType.controlEnd) {
-            this.model.moveControl(point, dx, dy, x, y, event)
+            this.model.moveControl(point, dx, dy, x, y)
         }
 
         this.view.render()

@@ -16,15 +16,15 @@ export interface PointParams {
     arcID: number
 }
 
-export class Point {
-    x: number
-    y: number
-    arcID: number
-    type: PointType
+export class Point implements Coordinate {
+    public readonly arcID: number
+    public readonly type: PointType
+
+    public x: number
+    public y: number
 
     constructor(params: PointParams) {
         const {coordinate, arcID, type} = params
-        // console.log(params)
 
         this.x = coordinate.x
         this.y = coordinate.y
@@ -32,9 +32,14 @@ export class Point {
         this.type = type
     }
 
-    controlMoveHandler(dx: number, dy: number) {
+    public controlMoveHandler(dx: number, dy: number) {
         this.x = this.x + dx
         this.y = this.y + dy
+    }
+
+    public updatePoint(coordinate: Coordinate){
+        this.x = coordinate.x
+        this.y = coordinate.y
     }
 }
 
@@ -44,18 +49,37 @@ export interface ArcParams {
 }
 
 export class Arc {
+    public arcID: number
+    public arcColor: string
+
     anchorStart: Point
     anchorEnd: Point
 
-    controlStart: Point
-    controlEnd: Point
-
-    arcID: number
-    arcColor: string
-
+    public controlStart: Point
+    public controlEnd: Point
 
     constructor(params: ArcParams) {
         this.createByCurveData(params)
+    }
+
+    public updatePoint(coordinate: Coordinate, type: PointType){
+        switch (type) {
+            case PointType.anchorStart:
+                this.anchorStart.updatePoint(coordinate);
+                break
+            case PointType.anchorEnd:
+                this.anchorEnd.updatePoint(coordinate);
+                break
+            case PointType.controlStart:
+                this.controlStart.updatePoint(coordinate);
+                break
+            case PointType.controlEnd:
+                this.controlEnd.updatePoint(coordinate);
+                break
+            default:
+                const expectedType: never = type;
+                throw new Error(`Что-то пошло не так. Неизвестный тип: ${expectedType}`)
+        }
     }
 
     private createByCurveData(params: ArcParams) {
@@ -90,6 +114,7 @@ export class Arc {
         }
         return newCoordinate
     }
+
 }
 
 export class Curve {
@@ -101,7 +126,7 @@ export class Curve {
         })
     }
 
-    public moveAnchor(point: Point, dx: number, dy: number, x: number, y: number, event: MouseEvent) {
+    public moveAnchor(point: Point, dx: number, dy: number, x: number, y: number) {
         // @ts-ignore
         const indexArc = this.arcs.findIndex((item) => {
             return item.arcID === point.arcID
@@ -111,33 +136,27 @@ export class Curve {
         const prevArc = this.arcs[indexArc - 1]
 
         if (point.type === PointType.anchorEnd) {
-            currentArc.anchorEnd.x = x
-            currentArc.anchorEnd.y = y
-
+            currentArc.updatePoint({x, y}, PointType.anchorEnd)
             return
         }
 
         if (prevArc) {
-            prevArc.anchorEnd.x = x
-            prevArc.anchorEnd.y = y
+            prevArc.updatePoint({x, y}, PointType.anchorEnd)
         }
 
-        currentArc.anchorStart.x = x
-        currentArc.anchorStart.y = y
+        currentArc.updatePoint({x, y}, PointType.anchorStart)
     }
 
-    public moveControl(point: Point, dx: number, dy: number, x: number, y: number, event: MouseEvent) {
+    public moveControl(point: Point, dx: number, dy: number, x: number, y: number) {
         // @ts-ignore
         const currentArc = this.arcs.find((arc) => arc.arcID === point.arcID)
 
         if (point.type === PointType.controlStart) {
-            currentArc.controlStart.x = x
-            currentArc.controlStart.y = y
+            currentArc.updatePoint({x,y}, PointType.controlStart)
         }
 
         if (point.type === PointType.controlEnd) {
-            currentArc.controlEnd.x = x
-            currentArc.controlEnd.y = y
+            currentArc.updatePoint({x,y}, PointType.controlEnd)
         }
     }
 
@@ -151,6 +170,7 @@ export class Curve {
             type: PointType.anchorEnd,
             coordinate: {x, y}
         })
+
         const secondPoint = new Point({
             arcID: uuidSecond,
             type: PointType.anchorEnd,
